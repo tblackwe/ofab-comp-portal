@@ -11,7 +11,7 @@ Parents watch a competition performance and pick any judge to hear that judge's 
 | **Cloudflare Worker** ([worker/](worker)) | Serves the React app and streams media from R2 at `/media/*` (Range requests, so seeking works). Every request goes through it, so access is checked in one place. |
 | **R2 bucket `judge-tape-media`** | Private storage for the video and judge tapes. It has no public URL; files are reachable only through the Worker. |
 | **Passcode gate** ([worker/passcode.js](worker/passcode.js)) | Interim access control until Login with BAND. The passcode is stored in the `SITE_PASSCODE` Worker secret, never in the repo. A signed cookie keeps people signed in for 90 days. Pages are marked `noindex`. |
-| **Metadata** ([src/data/performances.js](src/data/performances.js)) | The source of truth for what the site shows: performances, bucket keys, and each judge's `offset` and `gainDb`. Bucket file names can be anything. |
+| **Performance list** (`performances.json` in the bucket) | The source of truth for what the site shows: performances, bucket keys, and each judge's `offset` and `gainDb`. The Worker serves it at `/api/performances` and refuses a broken file ([shared/manifest.js](shared/manifest.js) checks it). Bucket file names can be anything. Editing it needs no deploy. |
 | **Synced player** ([src/useSyncedAudio.js](src/useSyncedAudio.js)) | The video is the clock; the judge `<audio>` follows it (`tapeTime = videoTime + offset`) across play, pause, seek, buffering and speed changes. |
 | **Volume** ([src/judgeAudio.js](src/judgeAudio.js)) | Web Audio gain per tape (`gainDb`) evens out loudness, a limiter catches peaks, and a slider saves each parent's level. Web Audio is needed because iOS ignores `audio.volume`. |
 
@@ -32,6 +32,17 @@ npm run dev
 
 `npm run lint` runs oxlint. `npm run build` builds into `dist/`.
 
+## Tests
+
+```sh
+npm test           # Worker tests: passcode gate, media streaming, performance list
+npm run test:e2e   # Browser tests in Google Chrome: login, sync, volume, tune mode
+```
+
+- Worker tests run inside the Workers runtime against an in-memory bucket ([test/worker/](test/worker)).
+- Browser tests start the site fully offline (`E2E=1`) with a local bucket seeded from [test/e2e/fixtures/](test/e2e/fixtures). They need Google Chrome installed, because Playwright's bundled Chromium can't play H.264/AAC.
+- GitHub Actions runs lint, build and both test suites on every push and pull request.
+
 ## Deploy
 
 ```sh
@@ -50,6 +61,8 @@ To watch live traffic: `npx wrangler tail`, or the dashboard under Workers & Pag
 
 ## Adding a performance
 
+No deploy is needed; the site reads the list from the bucket.
+
 1. Upload the video and judge tapes to the `judge-tape-media` R2 bucket. Any folder and file names work.
    - Use MP4 (H.264/AAC) for the video and M4A or MP3 for the tapes; they play in every browser.
 2. Get suggested offsets and gains:
@@ -59,19 +72,39 @@ To watch live traffic: `npx wrangler tail`, or the dashboard under Workers & Pag
    ```
 
    This works by matching each tape against the band audio the judge's recorder picked up. It reports how many segments agreed; low agreement means check that judge by ear.
-3. Add an entry to [src/data/performances.js](src/data/performances.js) with the bucket keys and the suggested `offset` and `gainDb` values.
-4. Run `npm run dev`, open the site with `?tune` in the URL, and check each judge:
+3. Download the current list, add an entry, and upload it:
+
+   ```sh
+   npm run manifest -- pull    # saves ./performances.json (gitignored)
+   # edit performances.json
+   npm run manifest -- push    # checks it, then uploads; live immediately
+   ```
+
+   An entry looks like this. `offset` is seconds into the tape when the video starts; `gainDb` evens out loudness (optional).
+
+   ```json
+   {
+     "id": "2026-region-championship",
+     "title": "Region Championship",
+     "ensemble": "Odessa HS Band",
+     "date": "2026-10-24",
+     "video": { "key": "2026/Region Championship/BandVideo.mp4" },
+     "judges": [
+       { "id": "gem", "code": "GEM", "name": "General Effect – Music", "key": "2026/Region Championship/GEM.m4a", "offset": 38.82, "gainDb": -9.1 }
+     ]
+   }
+   ```
+
+4. Check each judge on the live site with `?tune` at the end of the URL:
    - Offset buttons (±1 s, ±0.1 s) shift the tape until the commentary lines up with the video.
    - Gain buttons (±1 dB) adjust loudness.
-   - Copy the JSON from the tune panel back into `performances.js`.
-5. `npm run deploy`.
+   - The box at the bottom shows the whole entry with your changes; paste it over the old entry in `performances.json` and push again.
 
-When there is more than one performance, a picker appears automatically.
+Performances are listed newest first. When there is more than one, a picker appears automatically.
 
 ## Known gaps
 
 - **Access:** one shared passcode, no per-user accounts or revocation, and no login rate limiting. Login with BAND will replace it.
-- **No automated tests or CI.** Changes are checked by hand in a browser.
-- **Adding a performance needs a code change and deploy,** because the metadata lives in the app bundle.
+- **Pushing `performances.json` doesn't check that the files exist in the bucket.** A typo in a key shows up as a video or tape that won't play.
 - **Not yet verified on a real iPhone.**
 - The favicon is only 16/32 px, so home-screen icons look poor.

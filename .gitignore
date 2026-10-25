@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 .wrangler
 .dev.vars*
+
+# Local working copy of the R2 manifest (npm run manifest -- pull)
+/performances.json
+test-results
+playwright-report

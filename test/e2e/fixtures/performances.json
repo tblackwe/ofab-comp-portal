@@ -1,0 +1,23 @@
+{
+  "performances": [
+    {
+      "id": "older-show",
+      "title": "Older Show",
+      "ensemble": "Test Band",
+      "date": "2026-09-01",
+      "video": { "key": "2026/Older Show/video.mp4" },
+      "judges": []
+    },
+    {
+      "id": "newer-show",
+      "title": "Newer Show",
+      "ensemble": "Test Band",
+      "date": "2026-10-24",
+      "video": { "key": "2026/E2E Show/video.mp4" },
+      "judges": [
+        { "id": "a", "code": "JA", "name": "Judge A", "key": "2026/E2E Show/judge-a.m4a", "offset": 5, "gainDb": -3 },
+        { "id": "b", "code": "JB", "name": "Judge B", "key": "2026/E2E Show/Judge B .m4a", "offset": 2.5 }
+      ]
+    }
+  ]
+}

@@ -298,3 +298,15 @@
     padding-right: 14px;
   }
 }
+
+.notice {
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(15, 33, 24, 0.82);
+  border: 1px solid rgba(151, 176, 161, 0.22);
+  color: #ccd9d0;
+}
+
+.notice.error {
+  color: #ffb4a8;
+}

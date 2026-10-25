@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react'
 import './App.css'
-import { mediaUrl, performances } from './data/performances'
 import { dbToGain, resumeAudio, useJudgeVolume } from './judgeAudio'
+import { mediaUrl } from './lib/media'
+import { usePerformances } from './usePerformances'
 import { useSyncedAudio } from './useSyncedAudio'
 
 const tuneMode = new URLSearchParams(window.location.search).has('tune')
@@ -27,8 +28,7 @@ function saveVolume(value) {
 }
 
 function App() {
-  const [performanceId, setPerformanceId] = useState(performances[0].id)
-  const performance = performances.find((p) => p.id === performanceId) ?? performances[0]
+  const { status, performances, error } = usePerformances()
 
   return (
     <div className="page-shell">
@@ -39,32 +39,48 @@ function App() {
         </div>
       </header>
 
-      <main className={performances.length > 1 ? 'layout-grid' : 'layout-single'}>
-        {performances.length > 1 && (
-          <aside className="sidebar-panel">
-            <div className="panel-heading">
-              <h2>Performances</h2>
-            </div>
-            <div className="performance-list">
-              {performances.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`performance-card ${p.id === performanceId ? 'active' : ''}`}
-                  onClick={() => setPerformanceId(p.id)}
-                >
-                  <span className="performance-number">{p.date}</span>
-                  <h3>{p.title}</h3>
-                  <p>{p.ensemble}</p>
-                </button>
-              ))}
-            </div>
-          </aside>
-        )}
-
-        <Player key={performance.id} performance={performance} />
-      </main>
+      {status === 'loading' && <p className="notice">Loading performances…</p>}
+      {status === 'error' && (
+        <p className="notice error" role="alert">
+          Couldn’t load performances. Try refreshing in a minute. ({error})
+        </p>
+      )}
+      {status === 'ready' && performances.length === 0 && <p className="notice">No performances yet. Check back soon.</p>}
+      {status === 'ready' && performances.length > 0 && <Performances performances={performances} />}
     </div>
+  )
+}
+
+function Performances({ performances }) {
+  const [performanceId, setPerformanceId] = useState(performances[0].id)
+  const performance = performances.find((p) => p.id === performanceId) ?? performances[0]
+
+  return (
+    <main className={performances.length > 1 ? 'layout-grid' : 'layout-single'}>
+      {performances.length > 1 && (
+        <aside className="sidebar-panel">
+          <div className="panel-heading">
+            <h2>Performances</h2>
+          </div>
+          <div className="performance-list">
+            {performances.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`performance-card ${p.id === performanceId ? 'active' : ''}`}
+                onClick={() => setPerformanceId(p.id)}
+              >
+                <span className="performance-number">{p.date}</span>
+                <h3>{p.title}</h3>
+                <p>{p.ensemble}</p>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      <Player key={performance.id} performance={performance} />
+    </main>
   )
 }
 
@@ -95,7 +111,16 @@ function Player({ performance }) {
       [judge.id]: { ...prev[judge.id], [field]: Math.round((prev[judge.id][field] + delta) * 100) / 100 },
     }))
 
-  const tuningJson = useMemo(() => JSON.stringify(tuning, null, 2), [tuning])
+  // Paste-ready replacement for this performance's entry in performances.json.
+  const tuningJson = useMemo(
+    () =>
+      JSON.stringify(
+        { ...performance, judges: performance.judges.map((j) => ({ ...j, ...tuning[j.id] })) },
+        null,
+        2,
+      ),
+    [performance, tuning],
+  )
 
   return (
     <section className="detail-panel">
@@ -190,7 +215,7 @@ function Player({ performance }) {
               </button>
             ))}
           </div>
-          <textarea readOnly value={tuningJson} rows={performance.judges.length * 4 + 2} />
+          <textarea readOnly value={tuningJson} rows={16} aria-label="Performance JSON" />
         </div>
       )}
     </section>

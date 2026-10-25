@@ -1,6 +1,7 @@
 // Serves the app and media from the private R2 bucket. Every request (pages,
 // assets, media) goes through this Worker so access is gated in one place.
 
+import { MANIFEST_KEY, validateManifest } from '../shared/manifest.js'
 import { handleLogin, hasSession, redirectToLogin } from './passcode.js'
 
 const CONTENT_TYPES = {
@@ -56,6 +57,32 @@ async function serveMedia(request, env, key) {
   return new Response(object.body, { status: 200, headers })
 }
 
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, no-cache' },
+  })
+}
+
+// The performance list, read from the bucket on every request so uploads show up immediately.
+async function serveManifest(env) {
+  const object = await env.MEDIA.get(MANIFEST_KEY)
+  if (!object) {
+    return json({ error: `${MANIFEST_KEY} is missing from the bucket.` }, 404)
+  }
+  let data
+  try {
+    data = await object.json()
+  } catch {
+    return json({ error: `${MANIFEST_KEY} is not valid JSON.` }, 500)
+  }
+  const problems = validateManifest(data)
+  if (problems.length) {
+    return json({ error: `${MANIFEST_KEY} has problems.`, problems }, 500)
+  }
+  return json({ performances: data.performances })
+}
+
 const ROBOTS = 'User-agent: *\nDisallow: /\n'
 
 async function route(request, env) {
@@ -78,8 +105,15 @@ async function route(request, env) {
     return handleLogin(request, env)
   }
 
+  const isApi = url.pathname.startsWith('/api/')
   if (!(await hasSession(request, env))) {
+    if (isApi) return json({ error: 'Signed out.' }, 401)
     return url.pathname.startsWith('/media/') ? new Response('Unauthorized', { status: 401 }) : redirectToLogin(request)
+  }
+
+  if (isApi) {
+    if (url.pathname === '/api/performances' && request.method === 'GET') return serveManifest(env)
+    return json({ error: 'Not found.' }, 404)
   }
 
   if (url.pathname.startsWith('/media/')) {
