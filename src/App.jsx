@@ -7,9 +7,23 @@ import { useSyncedAudio } from './useSyncedAudio'
 const tuneMode = new URLSearchParams(window.location.search).has('tune')
 const VOLUME_KEY = 'jt.commentaryVolume'
 
+// localStorage throws when storage is blocked (some privacy modes); the slider still works for the visit.
 function storedVolume() {
-  const v = Number(localStorage.getItem(VOLUME_KEY))
-  return Number.isFinite(v) && localStorage.getItem(VOLUME_KEY) !== null ? Math.min(1, Math.max(0, v)) : 1
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY)
+    const v = Number(raw)
+    return raw !== null && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1
+  } catch {
+    return 1
+  }
+}
+
+function saveVolume(value) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(value))
+  } catch {
+    // Not persisted; fine.
+  }
 }
 
 function App() {
@@ -72,7 +86,7 @@ function Player({ performance }) {
 
   const changeVolume = (value) => {
     setVolume(value)
-    localStorage.setItem(VOLUME_KEY, String(value))
+    saveVolume(value)
   }
 
   const nudge = (field, delta) =>
