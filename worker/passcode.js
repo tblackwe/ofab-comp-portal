@@ -122,7 +122,7 @@ function loginPage(gate, next, failed) {
     color: #edf3ea; background: radial-gradient(circle at top, rgba(62,107,82,.28), transparent 30%), linear-gradient(180deg,#091a12,#050d0a); }
   form { box-sizing: border-box; width: min(360px, 92vw); padding: 28px; border-radius: 22px; background: rgba(15,33,24,.82); border: 1px solid rgba(151,176,161,.22); }
   p.eyebrow { margin: 0 0 8px; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; color: #d7bf53; }
-  h1 { margin: 0 0 20px; font-size: 2rem; text-transform: uppercase; letter-spacing: -.04em; }
+  h1 { margin: 0 0 20px; font-size: 2rem; text-transform: uppercase; letter-spacing: .01em; }
   h1 span { color: #d7bf53; }
   input { box-sizing: border-box; width: 100%; padding: .8rem 1rem; border-radius: 12px; border: 1px solid rgba(151,176,161,.35);
     background: #040a08; color: #edf3ea; font: inherit; }

@@ -28,7 +28,7 @@
   margin: 0;
   font-size: clamp(2.5rem, 4vw, 4.25rem);
   line-height: 0.95;
-  letter-spacing: -0.06em;
+  letter-spacing: 0.01em;
   text-transform: uppercase;
   color: #edf3ea;
 }
