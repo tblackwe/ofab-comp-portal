@@ -315,12 +315,13 @@
 
 .controls-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
 .judge-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
 }
 
@@ -358,14 +359,21 @@
 }
 
 .volume {
-  display: inline-flex;
+  display: flex;
+  flex: 0 1 420px;
+  min-width: 0;
   gap: 10px;
   align-items: center;
   color: #ccd9d0;
 }
 
+.volume span {
+  white-space: nowrap;
+}
+
 .volume input {
-  width: 180px;
+  flex: 1 1 auto;
+  min-width: 80px;
   accent-color: #d7bf53;
 }
 

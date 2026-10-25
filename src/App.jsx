@@ -20,8 +20,8 @@ function App() {
     <div className="page-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Competition parent hub</p>
-          <h1>Judge Tape <span>Portal</span></h1>
+          <p className="eyebrow">OFAB Marching Band</p>
+          <h1>Competition <span>Portal</span></h1>
         </div>
       </header>
 

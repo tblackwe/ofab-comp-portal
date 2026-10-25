@@ -80,7 +80,7 @@ function loginPage(next, failed) {
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Inter, 'Segoe UI', sans-serif;
     color: #edf3ea; background: radial-gradient(circle at top, rgba(62,107,82,.28), transparent 30%), linear-gradient(180deg,#091a12,#050d0a); }
-  form { width: min(360px, 90vw); padding: 28px; border-radius: 22px; background: rgba(15,33,24,.82); border: 1px solid rgba(151,176,161,.22); }
+  form { box-sizing: border-box; width: min(360px, 92vw); padding: 28px; border-radius: 22px; background: rgba(15,33,24,.82); border: 1px solid rgba(151,176,161,.22); }
   p.eyebrow { margin: 0 0 8px; font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; color: #d7bf53; }
   h1 { margin: 0 0 20px; font-size: 2rem; text-transform: uppercase; letter-spacing: -.04em; }
   h1 span { color: #d7bf53; }
@@ -94,8 +94,8 @@ function loginPage(next, failed) {
 </head>
 <body>
 <form method="post" action="/login">
-  <p class="eyebrow">Competition parent hub</p>
-  <h1>Judge Tape <span>Portal</span></h1>
+  <p class="eyebrow">OFAB Marching Band</p>
+  <h1>Competition <span>Portal</span></h1>
   <input type="hidden" name="next" value="${escapeHtml(next)}">
   <input name="passcode" type="password" placeholder="Passcode" autocomplete="current-password" autocapitalize="none" autofocus required aria-label="Passcode">
   <button type="submit">Enter</button>
