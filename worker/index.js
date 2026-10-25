@@ -1,10 +1,7 @@
-// Serves media from the private R2 bucket. The bucket is never exposed publicly;
-// every file goes through this Worker so access can be gated in one place.
+// Serves the app and media from the private R2 bucket. Every request (pages,
+// assets, media) goes through this Worker so access is gated in one place.
 
-// TODO(auth): replace with "Login with BAND" session check.
-async function isAuthorized() {
-  return true
-}
+import { handleLogin, hasSession, redirectToLogin } from './passcode.js'
 
 const CONTENT_TYPES = {
   mp4: 'video/mp4',
@@ -59,24 +56,50 @@ async function serveMedia(request, env, key) {
   return new Response(object.body, { status: 200, headers })
 }
 
+const ROBOTS = 'User-agent: *\nDisallow: /\n'
+
+async function route(request, env) {
+  const url = new URL(request.url)
+
+  if (url.pathname === '/robots.txt') {
+    return new Response(ROBOTS, { headers: { 'content-type': 'text/plain' } })
+  }
+
+  if (!env.SITE_PASSCODE) {
+    return new Response('SITE_PASSCODE is not configured.', { status: 500 })
+  }
+
+  if (url.pathname === '/login') {
+    return handleLogin(request, env)
+  }
+
+  if (!(await hasSession(request, env))) {
+    return url.pathname.startsWith('/media/') ? new Response('Unauthorized', { status: 401 }) : redirectToLogin(request)
+  }
+
+  if (url.pathname.startsWith('/media/')) {
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response('Method not allowed', { status: 405 })
+    }
+    const key = decodeURIComponent(url.pathname.slice('/media/'.length))
+    if (!key || key.includes('..')) {
+      return new Response('Bad request', { status: 400 })
+    }
+    return serveMedia(request, env, key)
+  }
+
+  const asset = await env.ASSETS.fetch(request)
+  const headers = new Headers(asset.headers)
+  // Authenticated content must not be cached by shared caches.
+  headers.set('cache-control', 'private, no-cache')
+  return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers })
+}
+
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url)
-
-    if (url.pathname.startsWith('/media/')) {
-      if (request.method !== 'GET' && request.method !== 'HEAD') {
-        return new Response('Method not allowed', { status: 405 })
-      }
-      if (!(await isAuthorized(request, env))) {
-        return new Response('Unauthorized', { status: 401 })
-      }
-      const key = decodeURIComponent(url.pathname.slice('/media/'.length))
-      if (!key || key.includes('..')) {
-        return new Response('Bad request', { status: 400 })
-      }
-      return serveMedia(request, env, key)
-    }
-
-    return new Response('Not found', { status: 404 })
+    const response = await route(request, env)
+    const headers = new Headers(response.headers)
+    headers.set('x-robots-tag', 'noindex, nofollow')
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
   },
 }
