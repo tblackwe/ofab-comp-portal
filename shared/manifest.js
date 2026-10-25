@@ -28,6 +28,7 @@ function checkUnique(errors, where, items) {
 }
 
 // Returns a list of human-readable problems; empty means valid.
+// A performance with "published": false is a draft, visible only on the admin page.
 export function validateManifest(data) {
   const errors = []
   if (!data || typeof data !== 'object' || !Array.isArray(data.performances)) {
@@ -41,6 +42,7 @@ export function validateManifest(data) {
     if (!isText(p.title)) errors.push(`${at}: "title" is required`)
     if (!DATE.test(p.date ?? '')) errors.push(`${at}: "date" must be YYYY-MM-DD`)
     if (p.ensemble !== undefined && typeof p.ensemble !== 'string') errors.push(`${at}: "ensemble" must be text`)
+    if (p.published !== undefined && typeof p.published !== 'boolean') errors.push(`${at}: "published" must be true or false`)
     checkKey(errors, `${at}.video`, p.video?.key)
     if (!Array.isArray(p.judges)) return errors.push(`${at}: "judges" must be a list (it can be empty)`)
 

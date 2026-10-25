@@ -37,3 +37,21 @@ export async function authed(path, init = {}) {
   headers.set('cookie', cookie)
   return call(path, { ...init, headers })
 }
+
+export async function adminLogin(passcode = 'Admin-Pass-123') {
+  const res = await call('/admin/login', {
+    method: 'POST',
+    body: new URLSearchParams({ passcode, next: '/admin' }),
+  })
+  const cookie = res.headers.get('set-cookie')?.split(';')[0] ?? null
+  return { res, cookie }
+}
+
+// Calls an admin URL as a signed-in admin from the site itself.
+export async function asAdmin(path, init = {}) {
+  const { cookie } = await adminLogin()
+  const headers = new Headers(init.headers)
+  headers.set('cookie', cookie)
+  if (!headers.has('origin')) headers.set('origin', ORIGIN)
+  return call(path, { ...init, headers })
+}

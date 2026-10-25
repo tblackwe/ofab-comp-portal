@@ -38,6 +38,7 @@ describe('validateManifest', () => {
     [performance({ judges: [judge({ gainDb: null })] }), '"gainDb" must be a number'],
     [performance({ judges: [judge({ key: 'a/../b.m4a' })] }), 'must not contain ".."'],
     [performance({ judges: [judge(), judge()] }), 'id "gem" is used more than once'],
+    [performance({ published: 'yes' }), '"published" must be true or false'],
   ])('reports a readable problem (%#)', (p, message) => {
     const problems = validateManifest({ performances: [p] })
     expect(problems.join('\n')).toContain(message)
@@ -68,10 +69,17 @@ describe('GET /api/performances', () => {
     expect(await res.json()).toEqual(data)
   })
 
-  it('reports a missing manifest', async () => {
+  it('treats a missing file as no performances yet', async () => {
     const res = await authed('/api/performances')
-    expect(res.status).toBe(404)
-    expect((await res.json()).error).toContain('missing')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ performances: [] })
+  })
+
+  it('hides drafts from parents', async () => {
+    const data = { performances: [performance(), performance({ id: 'draft', published: false })] }
+    await env.MEDIA.put(MANIFEST_KEY, JSON.stringify(data))
+    const body = await (await authed('/api/performances')).json()
+    expect(body.performances.map((p) => p.id)).toEqual(['show'])
   })
 
   it('refuses to serve broken JSON', async () => {

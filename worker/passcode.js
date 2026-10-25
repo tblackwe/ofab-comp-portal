@@ -1,14 +1,38 @@
-// Interim shared-passcode gate until "Login with BAND" is approved.
-// The passcode lives in the SITE_PASSCODE secret; the cookie holds an HMAC of it,
-// so changing the passcode signs everyone out.
+// Passcode sign-in, used for two separate gates:
+//   PARENT: shared passcode posted in BAND (interim until Login with BAND). Case-insensitive.
+//   ADMIN:  band staff password for /admin. Case-sensitive.
+// Each cookie holds an HMAC of its passcode, so changing a passcode signs everyone out.
 
-const COOKIE = 'jt_session'
-const MAX_AGE = 60 * 60 * 24 * 90
+export const PARENT = {
+  cookie: 'jt_session',
+  secret: 'SITE_PASSCODE',
+  label: 'judge-tape-session-v1',
+  maxAge: 60 * 60 * 24 * 90,
+  loginPath: '/login',
+  home: '/',
+  caseSensitive: false,
+  heading: 'Competition <span>Portal</span>',
+  hint: 'The passcode is posted in our BAND.',
+  placeholder: 'Passcode',
+}
 
-async function sessionToken(passcode) {
+export const ADMIN = {
+  cookie: 'ofab_admin',
+  secret: 'ADMIN_PASSCODE',
+  label: 'ofab-admin-session-v1',
+  maxAge: 60 * 60 * 24 * 7,
+  loginPath: '/admin/login',
+  home: '/admin',
+  caseSensitive: true,
+  heading: 'Portal <span>Admin</span>',
+  hint: 'Band staff only.',
+  placeholder: 'Admin password',
+}
+
+async function sessionToken(passcode, label) {
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey('raw', enc.encode(passcode), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode('judge-tape-session-v1'))
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(label))
   return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' })[c])
 }
 
@@ -27,49 +51,65 @@ function readCookie(request, name) {
   return null
 }
 
-function safeNext(value) {
-  return value && value.startsWith('/') && !value.startsWith('//') && !value.startsWith('/login') ? value : '/'
+function safeNext(gate, value) {
+  const ok =
+    value &&
+    value.startsWith(gate.home) &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    !value.startsWith(gate.loginPath)
+  return ok ? value : gate.home
 }
 
-export async function hasSession(request, env) {
-  const cookie = readCookie(request, COOKIE)
-  return Boolean(cookie) && safeEqual(cookie, await sessionToken(env.SITE_PASSCODE))
+function normalize(gate, value) {
+  const trimmed = String(value || '').trim()
+  return gate.caseSensitive ? trimmed : trimmed.toLowerCase()
 }
 
-export async function handleLogin(request, env) {
+export function isConfigured(gate, env) {
+  return Boolean(env[gate.secret])
+}
+
+export async function hasSession(gate, request, env) {
+  const cookie = readCookie(request, gate.cookie)
+  if (!cookie || !isConfigured(gate, env)) return false
+  return safeEqual(cookie, await sessionToken(env[gate.secret], gate.label))
+}
+
+export async function handleLogin(gate, request, env) {
   const url = new URL(request.url)
 
   if (request.method === 'POST') {
     const form = await request.formData()
-    const next = safeNext(form.get('next'))
-    const attempt = String(form.get('passcode') || '').trim().toLowerCase()
-    if (await safeEqual(attempt, env.SITE_PASSCODE.trim().toLowerCase())) {
+    const next = safeNext(gate, form.get('next'))
+    if (await safeEqual(normalize(gate, form.get('passcode')), normalize(gate, env[gate.secret]))) {
       const secure = url.protocol === 'https:' ? '; Secure' : ''
+      const token = await sessionToken(env[gate.secret], gate.label)
       return new Response(null, {
         status: 303,
         headers: {
           location: next,
-          'set-cookie': `${COOKIE}=${await sessionToken(env.SITE_PASSCODE)}; Path=/; Max-Age=${MAX_AGE}; HttpOnly; SameSite=Lax${secure}`,
+          'set-cookie': `${gate.cookie}=${token}; Path=/; Max-Age=${gate.maxAge}; HttpOnly; SameSite=Lax${secure}`,
         },
       })
     }
-    return loginPage(next, true)
+    return loginPage(gate, next, true)
   }
 
-  return loginPage(safeNext(url.searchParams.get('next')), false)
+  return loginPage(gate, safeNext(gate, url.searchParams.get('next')), false)
 }
 
-export function redirectToLogin(request) {
+export function redirectToLogin(gate, request) {
   const url = new URL(request.url)
   const next = encodeURIComponent(url.pathname + url.search)
-  return Response.redirect(`${url.origin}/login?next=${next}`, 303)
+  return Response.redirect(`${url.origin}${gate.loginPath}?next=${next}`, 303)
 }
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 }
 
-function loginPage(next, failed) {
+function loginPage(gate, next, failed) {
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -93,14 +133,14 @@ function loginPage(next, failed) {
 </style>
 </head>
 <body>
-<form method="post" action="/login">
+<form method="post" action="${gate.loginPath}">
   <p class="eyebrow">OFAB Marching Band</p>
-  <h1>Competition <span>Portal</span></h1>
+  <h1>${gate.heading}</h1>
   <input type="hidden" name="next" value="${escapeHtml(next)}">
-  <input name="passcode" type="password" placeholder="Passcode" autocomplete="current-password" autocapitalize="none" autofocus required aria-label="Passcode">
+  <input name="passcode" type="password" placeholder="${gate.placeholder}" autocomplete="current-password" autocapitalize="none" autofocus required aria-label="${gate.placeholder}">
   <button type="submit">Enter</button>
-  ${failed ? '<p class="error" role="alert">That passcode didn’t work.</p>' : ''}
-  <p class="hint">The passcode is posted in our BAND.</p>
+  ${failed ? `<p class="error" role="alert">That ${gate.placeholder.toLowerCase()} didn’t work.</p>` : ''}
+  <p class="hint">${gate.hint}</p>
 </form>
 </body>
 </html>`

@@ -7,10 +7,10 @@ export default defineConfig({
     cloudflareTest({
       remoteBindings: false,
       wrangler: { configPath: './wrangler.jsonc' },
-      miniflare: { bindings: { SITE_PASSCODE: 'Test-Pass' } },
+      miniflare: { bindings: { SITE_PASSCODE: 'Test-Pass', ADMIN_PASSCODE: 'Admin-Pass-123' } },
     }),
   ],
   test: {
-    include: ['test/worker/**/*.test.js'],
+    include: ['test/worker/**/*.test.js', 'test/unit/**/*.test.js'],
   },
 })

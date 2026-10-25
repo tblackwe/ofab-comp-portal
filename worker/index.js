@@ -1,8 +1,10 @@
 // Serves the app and media from the private R2 bucket. Every request (pages,
 // assets, media) goes through this Worker so access is gated in one place.
 
-import { MANIFEST_KEY, validateManifest } from '../shared/manifest.js'
-import { handleLogin, hasSession, redirectToLogin } from './passcode.js'
+import { handleAdminApi } from './admin.js'
+import { json } from './http.js'
+import { isPublished, ManifestError, readManifest } from './manifest.js'
+import { ADMIN, handleLogin, hasSession, isConfigured, PARENT, redirectToLogin } from './passcode.js'
 
 const CONTENT_TYPES = {
   mp4: 'video/mp4',
@@ -57,30 +59,15 @@ async function serveMedia(request, env, key) {
   return new Response(object.body, { status: 200, headers })
 }
 
-function json(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'private, no-cache' },
-  })
-}
-
-// The performance list, read from the bucket on every request so uploads show up immediately.
-async function serveManifest(env) {
-  const object = await env.MEDIA.get(MANIFEST_KEY)
-  if (!object) {
-    return json({ error: `${MANIFEST_KEY} is missing from the bucket.` }, 404)
-  }
-  let data
+// Published performances only; drafts are for the admin page.
+async function servePerformances(env) {
   try {
-    data = await object.json()
-  } catch {
-    return json({ error: `${MANIFEST_KEY} is not valid JSON.` }, 500)
+    const { data } = await readManifest(env)
+    return json({ performances: data.performances.filter(isPublished) })
+  } catch (error) {
+    if (error instanceof ManifestError) return json({ error: error.message, problems: error.problems }, 500)
+    throw error
   }
-  const problems = validateManifest(data)
-  if (problems.length) {
-    return json({ error: `${MANIFEST_KEY} has problems.`, problems }, 500)
-  }
-  return json({ performances: data.performances })
 }
 
 const ROBOTS = 'User-agent: *\nDisallow: /\n'
@@ -97,22 +84,36 @@ async function route(request, env) {
     return env.ASSETS.fetch(request)
   }
 
-  if (!env.SITE_PASSCODE) {
+  const path = url.pathname
+  const isAdminPath = path === '/admin' || path.startsWith('/admin/') || path.startsWith('/api/admin/')
+
+  if (isAdminPath) {
+    if (!isConfigured(ADMIN, env)) return new Response('Admin is not set up.', { status: 404 })
+    if (path === ADMIN.loginPath) return handleLogin(ADMIN, request, env)
+    if (!(await hasSession(ADMIN, request, env))) {
+      return path.startsWith('/api/') ? json({ error: 'Signed out.' }, 401) : redirectToLogin(ADMIN, request)
+    }
+    if (path.startsWith('/api/admin/')) return handleAdminApi(request, env, url)
+    return serveAsset(request, env)
+  }
+
+  if (!isConfigured(PARENT, env)) {
     return new Response('SITE_PASSCODE is not configured.', { status: 500 })
   }
 
-  if (url.pathname === '/login') {
-    return handleLogin(request, env)
+  if (path === PARENT.loginPath) {
+    return handleLogin(PARENT, request, env)
   }
 
-  const isApi = url.pathname.startsWith('/api/')
-  if (!(await hasSession(request, env))) {
-    if (isApi) return json({ error: 'Signed out.' }, 401)
-    return url.pathname.startsWith('/media/') ? new Response('Unauthorized', { status: 401 }) : redirectToLogin(request)
+  // Admins can see everything parents can.
+  const signedIn = (await hasSession(PARENT, request, env)) || (await hasSession(ADMIN, request, env))
+  if (!signedIn) {
+    if (path.startsWith('/api/')) return json({ error: 'Signed out.' }, 401)
+    return path.startsWith('/media/') ? new Response('Unauthorized', { status: 401 }) : redirectToLogin(PARENT, request)
   }
 
-  if (isApi) {
-    if (url.pathname === '/api/performances' && request.method === 'GET') return serveManifest(env)
+  if (path.startsWith('/api/')) {
+    if (path === '/api/performances' && request.method === 'GET') return servePerformances(env)
     return json({ error: 'Not found.' }, 404)
   }
 
@@ -132,6 +133,10 @@ async function route(request, env) {
     return serveMedia(request, env, key)
   }
 
+  return serveAsset(request, env)
+}
+
+async function serveAsset(request, env) {
   const asset = await env.ASSETS.fetch(request)
   const headers = new Headers(asset.headers)
   // Authenticated content must not be cached by shared caches.
