@@ -65,6 +65,11 @@ async function route(request, env) {
     return new Response(ROBOTS, { headers: { 'content-type': 'text/plain' } })
   }
 
+  // Shown on the login page, so it must load before sign-in.
+  if (url.pathname === '/favicon.ico') {
+    return env.ASSETS.fetch(request)
+  }
+
   if (!env.SITE_PASSCODE) {
     return new Response('SITE_PASSCODE is not configured.', { status: 500 })
   }

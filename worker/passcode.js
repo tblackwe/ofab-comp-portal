@@ -75,7 +75,8 @@ function loginPage(next, failed) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Judge Tape Portal</title>
+<title>OFAB Marching Band Competition Portal</title>
+<link rel="icon" href="/favicon.ico">
 <style>
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Inter, 'Segoe UI', sans-serif;
     color: #edf3ea; background: radial-gradient(circle at top, rgba(62,107,82,.28), transparent 30%), linear-gradient(180deg,#091a12,#050d0a); }
