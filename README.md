@@ -1,16 +1,33 @@
-# React + Vite
+# Judge Tape Portal
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Parents pick a performance, watch the band video, and listen to any judge's commentary in sync.
 
-Currently, two official plugins are available:
+- **Site + API:** a Cloudflare Worker that serves the React app (static assets) and `/media/*`.
+- **Media:** private R2 bucket `judge-tape-media`, streamed through the Worker (supports seeking). The bucket has no public URL.
+- **Metadata:** [src/data/performances.js](src/data/performances.js) is the source of truth. File names in the bucket can be anything.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Run locally
 
-## React Compiler
+```sh
+npm install
+npx wrangler login   # once; dev reads the real R2 bucket
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Deploy
 
-## Expanding the Oxlint configuration
+```sh
+npm run deploy
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## Adding a performance
+
+1. Upload the video and judge tapes to R2 (any folder/names).
+2. Add an entry to `src/data/performances.js` with the bucket keys.
+3. Set each judge's `offset` (seconds into the tape when the video starts). Open the site with `?tune`, pick a judge, nudge until it lines up, and copy the values back into the file.
+
+To get starting offsets automatically (needs `ffmpeg` and `numpy`):
+
+```sh
+python3 scripts/align_offsets.py BandVideo.mp4 *.m4a
+```

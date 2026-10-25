@@ -1,117 +1,82 @@
-const defaultPerformances = {
-  'opening-march': {
-    id: 'opening-march',
-    title: 'Opening March',
-    subtitle: 'Middle School Band',
-    date: 'March 7, 2026',
-    location: 'North Gym',
-    status: 'Ready',
-    description: 'The first performance of the evening with the full ensemble and a strong opener for the judges.',
-    videos: [
-      {
-        title: 'Performance video',
-        kind: 'Main recording',
-        key: 'performances/opening-march/main.mp4',
-        synced: true,
-        note: 'Main recording for the ensemble performance.',
-      },
-      {
-        title: 'Judge tape 01',
-        kind: 'Judge recording',
-        key: 'performances/opening-march/judge-01.mp4',
-        synced: true,
-        note: 'Judge recording for review.',
-      },
-    ],
-  },
-  'jazz-combo': {
-    id: 'jazz-combo',
-    title: 'Jazz Combo',
-    subtitle: 'Jazz Ensemble',
-    date: 'March 7, 2026',
-    location: 'South Studio',
-    status: 'Ready',
-    description: 'A tighter ensemble performance with visible section leadership and a more detailed judge tape sync.',
-    videos: [
-      {
-        title: 'Performance video',
-        kind: 'Main recording',
-        key: 'performances/jazz-combo/main.mp4',
-        synced: true,
-        note: 'Main recording for the ensemble performance.',
-      },
-      {
-        title: 'Soloist camera',
-        kind: 'Parent upload',
-        key: 'performances/jazz-combo/soloist-camera.mp4',
-        synced: true,
-        note: 'Alternate angle for review.',
-      },
-    ],
-  },
-  'closing-finale': {
-    id: 'closing-finale',
-    title: 'Closing Finale',
-    subtitle: 'Concert Band',
-    date: 'March 7, 2026',
-    location: 'Main Stage',
-    status: 'Ready',
-    description: 'The final performance of the evening, with the full band and the judges finishing on the same timeline.',
-    videos: [
-      {
-        title: 'Performance video',
-        kind: 'Main recording',
-        key: 'performances/closing-finale/main.mp4',
-        synced: true,
-        note: 'Default view for the final performance.',
-      },
-      {
-        title: 'Judge tape 03',
-        kind: 'Judge recording',
-        key: 'performances/closing-finale/judge-03.mp4',
-        synced: true,
-        note: 'Judge tape for the final performance.',
-      },
-    ],
-  },
+// Serves media from the private R2 bucket. The bucket is never exposed publicly;
+// every file goes through this Worker so access can be gated in one place.
+
+// TODO(auth): replace with "Login with BAND" session check.
+async function isAuthorized() {
+  return true
 }
 
-function withPublicUrls(performance, baseUrl) {
-  return {
-    ...performance,
-    videos: (performance.videos || []).map((video) => ({
-      ...video,
-      src: `${baseUrl.replace(/\/$/, '')}/${video.key}`,
-    })),
+const CONTENT_TYPES = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  m4a: 'audio/mp4',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+}
+
+async function serveMedia(request, env, key) {
+  const isHead = request.method === 'HEAD'
+  const object = isHead
+    ? await env.MEDIA.head(key)
+    : await env.MEDIA.get(key, { range: request.headers, onlyIf: request.headers })
+
+  if (!object) {
+    return new Response('Not found', { status: 404 })
   }
+
+  const headers = new Headers()
+  object.writeHttpMetadata(headers)
+  if (!headers.has('content-type')) {
+    const ext = key.split('.').pop().toLowerCase()
+    headers.set('content-type', CONTENT_TYPES[ext] ?? 'application/octet-stream')
+  }
+  headers.set('etag', object.httpEtag)
+  headers.set('accept-ranges', 'bytes')
+  headers.set('cache-control', 'private, max-age=3600')
+
+  // Precondition (If-None-Match etc.) matched: R2 returns metadata without a body.
+  if (!isHead && !('body' in object)) {
+    return new Response(null, { status: 304, headers })
+  }
+
+  if (isHead) {
+    headers.set('content-length', String(object.size))
+    return new Response(null, { status: 200, headers })
+  }
+
+  const range = object.range
+  if (range && request.headers.has('range')) {
+    const offset = range.offset ?? object.size - range.suffix
+    const length = range.length ?? object.size - offset
+    headers.set('content-range', `bytes ${offset}-${offset + length - 1}/${object.size}`)
+    headers.set('content-length', String(length))
+    return new Response(object.body, { status: 206, headers })
+  }
+
+  headers.set('content-length', String(object.size))
+  return new Response(object.body, { status: 200, headers })
 }
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
-    const performanceId = url.pathname.replace(/^\/+|\/+$/g, '').split('/').pop()
-    const baseUrl = (env.PUBLIC_MEDIA_BASE_URL || '').replace(/\/$/, '')
 
-    if (!baseUrl) {
-      return Response.json(
-        {
-          error: 'PUBLIC_MEDIA_BASE_URL is not configured.',
-        },
-        { status: 500 },
-      )
+    if (url.pathname.startsWith('/media/')) {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return new Response('Method not allowed', { status: 405 })
+      }
+      if (!(await isAuthorized(request, env))) {
+        return new Response('Unauthorized', { status: 401 })
+      }
+      const key = decodeURIComponent(url.pathname.slice('/media/'.length))
+      if (!key || key.includes('..')) {
+        return new Response('Bad request', { status: 400 })
+      }
+      return serveMedia(request, env, key)
     }
 
-    const performance = defaultPerformances[performanceId]
-
-    if (!performance) {
-      return Response.json({ error: 'Performance not found' }, { status: 404 })
-    }
-
-    return Response.json(withPublicUrls(performance, baseUrl), {
-      headers: {
-        'content-type': 'application/json',
-        'cache-control': 'no-store',
-      },
-    })
+    return new Response('Not found', { status: 404 })
   },
 }

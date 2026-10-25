@@ -1,49 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import './App.css'
-import { performances } from './data/performances'
-import { loadPerformanceById } from './lib/media'
+import { mediaUrl, performances } from './data/performances'
+import { useSyncedAudio } from './useSyncedAudio'
+
+const tuneMode = new URLSearchParams(window.location.search).has('tune')
 
 function App() {
-  const [selectedId, setSelectedId] = useState(performances[0].id)
-  const [selectedPerformance, setSelectedPerformance] = useState(performances[0])
-  const [isLoading, setIsLoading] = useState(false)
-
-  useEffect(() => {
-    let isMounted = true
-
-    async function loadPerformance() {
-      setIsLoading(true)
-
-      try {
-        const performance = await loadPerformanceById(selectedId)
-
-        if (isMounted) {
-          setSelectedPerformance(performance)
-        }
-      } catch (error) {
-        console.error(error)
-
-        if (isMounted) {
-          setSelectedPerformance(performances[0])
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    loadPerformance()
-
-    return () => {
-      isMounted = false
-    }
-  }, [selectedId])
-
-  const selectedVideos = useMemo(
-    () => selectedPerformance.videos || [],
-    [selectedPerformance],
-  )
+  const [performanceId, setPerformanceId] = useState(performances[0].id)
+  const performance = performances.find((p) => p.id === performanceId) ?? performances[0]
 
   return (
     <div className="page-shell">
@@ -52,96 +16,130 @@ function App() {
           <p className="eyebrow">Competition parent hub</p>
           <h1>Judge Tape <span>Portal</span></h1>
         </div>
-        <div className="header-actions">
-          <button type="button" className="secondary-button">
-            Protected Drive
-          </button>
-          <button type="button" className="primary-button">
-            View all entries
-          </button>
-        </div>
       </header>
 
-      <main className="layout-grid">
-        <aside className="sidebar-panel">
-          <div className="panel-heading">
-            <h2>Performances</h2>
-            <span>{performances.length} ready</span>
-          </div>
+      <main className={performances.length > 1 ? 'layout-grid' : 'layout-single'}>
+        {performances.length > 1 && (
+          <aside className="sidebar-panel">
+            <div className="panel-heading">
+              <h2>Performances</h2>
+            </div>
+            <div className="performance-list">
+              {performances.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={`performance-card ${p.id === performanceId ? 'active' : ''}`}
+                  onClick={() => setPerformanceId(p.id)}
+                >
+                  <span className="performance-number">{p.date}</span>
+                  <h3>{p.title}</h3>
+                  <p>{p.ensemble}</p>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
 
-          <div className="performance-list">
-            {performances.map((performance) => (
-              <button
-                key={performance.id}
-                type="button"
-                className={`performance-card ${selectedId === performance.id ? 'active' : ''}`}
-                onClick={() => setSelectedId(performance.id)}
-              >
-                <div className="card-topline">
-                  <span className="performance-number">{performance.title}</span>
-                  <span className="status-pill">{performance.status}</span>
-                </div>
-                <h3>{performance.subtitle}</h3>
-                <p>{performance.location}</p>
-                <div className="card-meta">
-                  <span>{performance.date}</span>
-                  <span>{performance.videos.length} videos</span>
-                </div>
+        <Player key={performance.id} performance={performance} />
+      </main>
+    </div>
+  )
+}
+
+function Player({ performance }) {
+  const videoRef = useRef(null)
+  const audioRef = useRef(null)
+  const [judgeId, setJudgeId] = useState(performance.judges[0]?.id ?? null)
+  const [bandMuted, setBandMuted] = useState(true)
+  const [offsets, setOffsets] = useState(() =>
+    Object.fromEntries(performance.judges.map((j) => [j.id, j.offset])),
+  )
+
+  const judge = performance.judges.find((j) => j.id === judgeId) ?? null
+  const offset = judge ? offsets[judge.id] : 0
+
+  useSyncedAudio(videoRef, audioRef, offset, judge?.key)
+
+  const nudge = (delta) =>
+    setOffsets((prev) => ({ ...prev, [judge.id]: Math.round((prev[judge.id] + delta) * 100) / 100 }))
+
+  const offsetsJson = useMemo(() => JSON.stringify(offsets, null, 2), [offsets])
+
+  return (
+    <section className="detail-panel">
+      <div className="detail-header">
+        <div>
+          <p className="eyebrow small">{performance.date}</p>
+          <h2>{performance.title}</h2>
+          <p className="subtitle">{performance.ensemble}</p>
+        </div>
+      </div>
+
+      <div className="featured-video-wrap">
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          preload="metadata"
+          muted={Boolean(judge) && bandMuted}
+          src={mediaUrl(performance.video.key)}
+        />
+        {judge && <audio key={judge.id} ref={audioRef} preload="auto" src={mediaUrl(judge.key)} />}
+      </div>
+
+      <div className="controls-row">
+        <div className="judge-picker" role="radiogroup" aria-label="Judge commentary">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!judge}
+            className={`judge-chip ${!judge ? 'active' : ''}`}
+            onClick={() => setJudgeId(null)}
+          >
+            <strong>Band</strong>
+            <span>No commentary</span>
+          </button>
+          {performance.judges.map((j) => (
+            <button
+              key={j.id}
+              type="button"
+              role="radio"
+              aria-checked={j.id === judgeId}
+              className={`judge-chip ${j.id === judgeId ? 'active' : ''}`}
+              onClick={() => setJudgeId(j.id)}
+            >
+              <strong>{j.code}</strong>
+              <span>{j.name}</span>
+            </button>
+          ))}
+        </div>
+
+        {judge && (
+          <label className="toggle">
+            <input type="checkbox" checked={!bandMuted} onChange={(e) => setBandMuted(!e.target.checked)} />
+            Play band audio under commentary
+          </label>
+        )}
+      </div>
+
+      {tuneMode && judge && (
+        <div className="tune-panel">
+          <p>
+            <strong>{judge.code}</strong> offset: <code>{offset.toFixed(2)}s</code>
+          </p>
+          <div className="tune-buttons">
+            {[-1, -0.1, 0.1, 1].map((d) => (
+              <button key={d} type="button" className="secondary-button" onClick={() => nudge(d)}>
+                {d > 0 ? '+' : ''}
+                {d}s
               </button>
             ))}
           </div>
-        </aside>
-
-        <section className="detail-panel">
-          <div className="detail-header">
-            <div>
-              <p className="eyebrow small">{selectedPerformance.date}</p>
-              <h2>{selectedPerformance.title}</h2>
-            </div>
-            <a href={selectedPerformance.driveUrl} target="_blank" rel="noreferrer" className="drive-link">
-              Open protected drive
-            </a>
-          </div>
-
-          <div className="detail-summary">
-            <div className="summary-copy">
-              <p>{selectedPerformance.description}</p>
-            </div>
-            <div className="summary-badges">
-              <span>{selectedPerformance.location}</span>
-              <span>Auto-synced</span>
-              <span>Google Auth</span>
-            </div>
-          </div>
-
-          {isLoading ? (
-            <div className="loading-state">Loading media…</div>
-          ) : (
-            <>
-              <div className="featured-video-wrap">
-                <video controls src={selectedVideos[0]?.src || ''} poster="" />
-              </div>
-
-              <div className="video-grid">
-                {selectedVideos.map((video, index) => (
-                  <article key={`${video.title}-${index}`} className="video-card">
-                    <div className="video-label-row">
-                      <span className="kind-tag">{video.kind}</span>
-                      {video.synced ? <span className="sync-tag">Synced</span> : <span className="sync-tag muted">Waiting</span>}
-                    </div>
-                    <video controls src={video.src} />
-                    <div className="video-copy">
-                      <h3>{video.title}</h3>
-                      <p>{video.note}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </>
-          )}
-        </section>
-      </main>
-    </div>
+          <textarea readOnly value={offsetsJson} rows={performance.judges.length + 2} />
+        </div>
+      )}
+    </section>
   )
 }
 

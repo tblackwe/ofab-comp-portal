@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "judge-tape-parent-portal",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/media/*", "/api/*"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "judge-tape-media",
+      // Use the real bucket during `npm run dev` too, so local dev sees uploaded media.
+      "remote": true
+    }
+  ]
+}

@@ -1,6 +1,0 @@
-name = "judge-tape-parent-portal"
-compatibility_date = "2024-09-01"
-main = "worker/index.js"
-
-[vars]
-PUBLIC_MEDIA_BASE_URL = "https://<your-bucket>.r2.dev"
