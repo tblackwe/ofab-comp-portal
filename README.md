@@ -30,7 +30,7 @@ To change the passcode (signs everyone out): `npx wrangler secret put SITE_PASSC
 2. Add an entry to `src/data/performances.js` with the bucket keys.
 3. Set each judge's `offset` (seconds into the tape when the video starts). Open the site with `?tune`, pick a judge, nudge until it lines up, and copy the values back into the file.
 
-To get starting offsets automatically (needs `ffmpeg` and `numpy`):
+To get suggested offsets and gains automatically (needs `ffmpeg` and `numpy`):
 
 ```sh
 python3 scripts/align_offsets.py BandVideo.mp4 *.m4a

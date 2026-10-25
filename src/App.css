@@ -350,6 +350,35 @@
   border-color: rgba(242, 215, 91, 0.7);
 }
 
+.audio-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  align-items: center;
+}
+
+.volume {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  color: #ccd9d0;
+}
+
+.volume input {
+  width: 180px;
+  accent-color: #d7bf53;
+}
+
+.volume output {
+  min-width: 3.5ch;
+  font-variant-numeric: tabular-nums;
+  color: #edf3ea;
+}
+
+.tune-buttons {
+  flex-wrap: wrap;
+}
+
 .toggle {
   display: inline-flex;
   gap: 8px;

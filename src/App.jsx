@@ -1,9 +1,16 @@
 import { useMemo, useRef, useState } from 'react'
 import './App.css'
 import { mediaUrl, performances } from './data/performances'
+import { dbToGain, resumeAudio, useJudgeVolume } from './judgeAudio'
 import { useSyncedAudio } from './useSyncedAudio'
 
 const tuneMode = new URLSearchParams(window.location.search).has('tune')
+const VOLUME_KEY = 'jt.commentaryVolume'
+
+function storedVolume() {
+  const v = Number(localStorage.getItem(VOLUME_KEY))
+  return Number.isFinite(v) && localStorage.getItem(VOLUME_KEY) !== null ? Math.min(1, Math.max(0, v)) : 1
+}
 
 function App() {
   const [performanceId, setPerformanceId] = useState(performances[0].id)
@@ -52,19 +59,29 @@ function Player({ performance }) {
   const audioRef = useRef(null)
   const [judgeId, setJudgeId] = useState(performance.judges[0]?.id ?? null)
   const [bandMuted, setBandMuted] = useState(true)
-  const [offsets, setOffsets] = useState(() =>
-    Object.fromEntries(performance.judges.map((j) => [j.id, j.offset])),
+  const [volume, setVolume] = useState(storedVolume)
+  const [tuning, setTuning] = useState(() =>
+    Object.fromEntries(performance.judges.map((j) => [j.id, { offset: j.offset, gainDb: j.gainDb ?? 0 }])),
   )
 
   const judge = performance.judges.find((j) => j.id === judgeId) ?? null
-  const offset = judge ? offsets[judge.id] : 0
+  const { offset, gainDb } = judge ? tuning[judge.id] : { offset: 0, gainDb: 0 }
 
   useSyncedAudio(videoRef, audioRef, offset, judge?.key)
+  useJudgeVolume(audioRef, judge?.key, volume * dbToGain(gainDb))
 
-  const nudge = (delta) =>
-    setOffsets((prev) => ({ ...prev, [judge.id]: Math.round((prev[judge.id] + delta) * 100) / 100 }))
+  const changeVolume = (value) => {
+    setVolume(value)
+    localStorage.setItem(VOLUME_KEY, String(value))
+  }
 
-  const offsetsJson = useMemo(() => JSON.stringify(offsets, null, 2), [offsets])
+  const nudge = (field, delta) =>
+    setTuning((prev) => ({
+      ...prev,
+      [judge.id]: { ...prev[judge.id], [field]: Math.round((prev[judge.id][field] + delta) * 100) / 100 },
+    }))
+
+  const tuningJson = useMemo(() => JSON.stringify(tuning, null, 2), [tuning])
 
   return (
     <section className="detail-panel">
@@ -83,6 +100,7 @@ function Player({ performance }) {
           playsInline
           preload="metadata"
           muted={Boolean(judge) && bandMuted}
+          onPlay={resumeAudio}
           src={mediaUrl(performance.video.key)}
         />
         {judge && <audio key={judge.id} ref={audioRef} preload="auto" src={mediaUrl(judge.key)} />}
@@ -116,27 +134,49 @@ function Player({ performance }) {
         </div>
 
         {judge && (
-          <label className="toggle">
-            <input type="checkbox" checked={!bandMuted} onChange={(e) => setBandMuted(!e.target.checked)} />
-            Play band audio under commentary
-          </label>
+          <div className="audio-options">
+            <label className="volume">
+              <span>Commentary volume</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={(e) => changeVolume(Number(e.target.value))}
+                aria-valuetext={`${Math.round(volume * 100)}%`}
+              />
+              <output>{Math.round(volume * 100)}%</output>
+            </label>
+            <label className="toggle">
+              <input type="checkbox" checked={!bandMuted} onChange={(e) => setBandMuted(!e.target.checked)} />
+              Play band audio under commentary
+            </label>
+          </div>
         )}
       </div>
 
       {tuneMode && judge && (
         <div className="tune-panel">
           <p>
-            <strong>{judge.code}</strong> offset: <code>{offset.toFixed(2)}s</code>
+            <strong>{judge.code}</strong> offset: <code>{offset.toFixed(2)}s</code> · gain:{' '}
+            <code>{gainDb > 0 ? '+' : ''}{gainDb.toFixed(1)} dB</code>
           </p>
           <div className="tune-buttons">
             {[-1, -0.1, 0.1, 1].map((d) => (
-              <button key={d} type="button" className="secondary-button" onClick={() => nudge(d)}>
+              <button key={d} type="button" className="secondary-button" onClick={() => nudge('offset', d)}>
                 {d > 0 ? '+' : ''}
                 {d}s
               </button>
             ))}
+            {[-1, 1].map((d) => (
+              <button key={`g${d}`} type="button" className="secondary-button" onClick={() => nudge('gainDb', d)}>
+                {d > 0 ? '+' : ''}
+                {d} dB
+              </button>
+            ))}
           </div>
-          <textarea readOnly value={offsetsJson} rows={performance.judges.length + 2} />
+          <textarea readOnly value={tuningJson} rows={performance.judges.length * 4 + 2} />
         </div>
       )}
     </section>
